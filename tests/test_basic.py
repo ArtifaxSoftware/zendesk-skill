@@ -473,6 +473,19 @@ def test_markdown_to_html_code_block():
     assert "<code>" in result
 
 
+def test_markdown_to_html_table():
+    """GFM tables must convert to real <table> HTML, not pass through as literal pipes."""
+    from zendesk_skill.formatting import markdown_to_html
+
+    md = "| Library | Version |\n|---|---|\n| foo | 1.0 |\n| bar | 2.0 |"
+    result = markdown_to_html(md)
+    assert "<table>" in result
+    assert "<thead>" in result
+    assert "<th>Library</th>" in result
+    assert "<td>foo</td>" in result
+    assert "| Library |" not in result
+
+
 def test_markdown_to_html_links():
     """Test link Markdown conversion."""
     from zendesk_skill.formatting import markdown_to_html

@@ -14,7 +14,7 @@ MAX_CONTENT_SIZE = 65536  # 64KB
 
 # Markdown renderer with hard_wrap enabled - converts single newlines to <br>
 # This matches user expectations in a support context (WYSIWYG behavior)
-_md = mistune.create_markdown(hard_wrap=True)
+_md = mistune.create_markdown(hard_wrap=True, plugins=["table"])
 
 # Pattern to detect content that's already HTML: must start with an HTML tag
 # (after optional whitespace). This avoids false positives from Markdown that
