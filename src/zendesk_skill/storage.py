@@ -1,8 +1,8 @@
 """Response storage and structure extraction for efficient LLM context management."""
 
+import getpass
 import hashlib
 import json
-import os
 import tempfile
 import time
 from datetime import datetime, timezone
@@ -11,8 +11,10 @@ from typing import Any
 
 from zendesk_skill.utils.security import is_security_enabled
 
-# Default storage directory (cross-platform, per-user to avoid conflicts)
-DEFAULT_STORAGE_DIR = Path(tempfile.gettempdir()) / f"zd-cli-{os.getuid()}"
+# Default storage directory (cross-platform, per-user to avoid conflicts).
+# Use getpass.getuser() instead of os.getuid() so this works on Windows
+# (os.getuid is POSIX-only).
+DEFAULT_STORAGE_DIR = Path(tempfile.gettempdir()) / f"zd-cli-{getpass.getuser()}"
 
 
 def _get_storage_dir(ticket_id: str | None = None) -> Path:
