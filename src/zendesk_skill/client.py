@@ -195,14 +195,12 @@ def _save_config(config: dict) -> Path:
     Returns:
         Path to the config file
     """
+    from zendesk_skill.utils.file_perms import restrict_to_owner
+
     CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
     with open(CONFIG_PATH, "w") as f:
         json.dump(config, f, indent=2)
-    # Secure permissions (Unix only, no-op on Windows)
-    try:
-        CONFIG_PATH.chmod(0o600)
-    except OSError:
-        pass  # Windows doesn't support Unix permissions
+    restrict_to_owner(CONFIG_PATH)
     return CONFIG_PATH
 
 

@@ -137,15 +137,21 @@ def save_encrypted(path: Path, data: dict[str, Any], key: bytes | None) -> None:
     If a plaintext version of the file exists when saving encrypted, it is
     removed (migration cleanup).  Files are created with 0o600 permissions.
     """
+    from zendesk_skill.utils.file_perms import restrict_to_owner
+
     path.parent.mkdir(parents=True, exist_ok=True)
 
     if key is not None:
         dest = _enc_path(path)
         fernet = Fernet(key)
         ciphertext = fernet.encrypt(json.dumps(data, indent=2).encode())
+        # POSIX: the mode argument secures the file at creation time.
+        # Windows: the mode argument is ignored; restrict_to_owner below
+        # tightens NTFS ACLs via icacls after the file exists.
         fd = os.open(str(dest), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
         with os.fdopen(fd, "wb") as f:
             f.write(ciphertext)
+        restrict_to_owner(dest)
         # Remove plaintext leftover from before encryption was enabled
         if path.exists():
             path.unlink()
@@ -153,6 +159,7 @@ def save_encrypted(path: Path, data: dict[str, Any], key: bytes | None) -> None:
         fd = os.open(str(path), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
         with os.fdopen(fd, "w") as f:
             json.dump(data, f, indent=2)
+        restrict_to_owner(path)
 
 
 def load_encrypted(path: Path, key: bytes | None) -> dict[str, Any] | None:

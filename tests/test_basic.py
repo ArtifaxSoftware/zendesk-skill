@@ -2,16 +2,12 @@
 
 import json
 import shutil
-import sys
 import tempfile
 from pathlib import Path
 
 import pytest
 
-# Windows does not enforce POSIX 0o600 file modes; secret files instead rely on
-# NTFS ACLs inherited from %USERPROFILE%, which already restricts access to the
-# current user. Skip POSIX-mode assertions on Windows.
-_POSIX_MODES_ENFORCED = sys.platform != "win32"
+from zendesk_skill.utils.file_perms import is_owner_restricted
 
 # Tests that shell out to `jq` require it on PATH. Skip when it isn't available
 # (e.g. fresh Windows machines) — the CLI itself already handles FileNotFoundError.
@@ -368,10 +364,9 @@ def test_save_and_delete_credentials(monkeypatch):
         assert path == CONFIG_PATH
         assert CONFIG_PATH.exists()
 
-        # Verify file permissions (owner read/write only) — POSIX only.
-        if _POSIX_MODES_ENFORCED:
-            mode = CONFIG_PATH.stat().st_mode & 0o777
-            assert mode == 0o600
+        # Verify the file is restricted to the current user
+        # (POSIX 0o600 / Windows owner-only ACLs).
+        assert is_owner_restricted(CONFIG_PATH)
 
         # Verify config content (email + subdomain, NOT token)
         with open(CONFIG_PATH) as f:
