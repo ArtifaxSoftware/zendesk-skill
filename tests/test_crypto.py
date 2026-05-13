@@ -2,10 +2,15 @@
 
 import json
 import os
+import sys
 from pathlib import Path
 from unittest.mock import patch
 
 import pytest
+
+# POSIX mode bits (0o600) are not enforced on Windows; file isolation there
+# comes from NTFS ACLs inherited from %USERPROFILE%. Skip mode assertions on Win.
+_POSIX_MODES_ENFORCED = sys.platform != "win32"
 
 from zendesk_skill.crypto import (
     generate_salt,
@@ -94,9 +99,10 @@ def test_save_load_encrypted_roundtrip(tmp_path, key):
     assert _enc_path(base).exists()
     assert not base.exists()
 
-    # Permissions should be 0o600
-    mode = _enc_path(base).stat().st_mode & 0o777
-    assert mode == 0o600
+    # Permissions should be 0o600 — POSIX only.
+    if _POSIX_MODES_ENFORCED:
+        mode = _enc_path(base).stat().st_mode & 0o777
+        assert mode == 0o600
 
     loaded = load_encrypted(base, key)
     assert loaded == data
@@ -117,9 +123,10 @@ def test_save_load_no_key(tmp_path):
     with open(base) as f:
         assert json.load(f) == data
 
-    # Permissions should be 0o600
-    mode = base.stat().st_mode & 0o777
-    assert mode == 0o600
+    # Permissions should be 0o600 — POSIX only.
+    if _POSIX_MODES_ENFORCED:
+        mode = base.stat().st_mode & 0o777
+        assert mode == 0o600
 
     loaded = load_encrypted(base, None)
     assert loaded == data

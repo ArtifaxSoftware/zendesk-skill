@@ -1,10 +1,21 @@
 """Basic tests for zendesk-skill CLI and MCP server."""
 
 import json
+import shutil
+import sys
 import tempfile
 from pathlib import Path
 
 import pytest
+
+# Windows does not enforce POSIX 0o600 file modes; secret files instead rely on
+# NTFS ACLs inherited from %USERPROFILE%, which already restricts access to the
+# current user. Skip POSIX-mode assertions on Windows.
+_POSIX_MODES_ENFORCED = sys.platform != "win32"
+
+# Tests that shell out to `jq` require it on PATH. Skip when it isn't available
+# (e.g. fresh Windows machines) — the CLI itself already handles FileNotFoundError.
+_HAS_JQ = shutil.which("jq") is not None
 
 
 def test_import_cli():
@@ -357,9 +368,10 @@ def test_save_and_delete_credentials(monkeypatch):
         assert path == CONFIG_PATH
         assert CONFIG_PATH.exists()
 
-        # Verify file permissions (owner read/write only)
-        mode = CONFIG_PATH.stat().st_mode & 0o777
-        assert mode == 0o600
+        # Verify file permissions (owner read/write only) — POSIX only.
+        if _POSIX_MODES_ENFORCED:
+            mode = CONFIG_PATH.stat().st_mode & 0o777
+            assert mode == 0o600
 
         # Verify config content (email + subdomain, NOT token)
         with open(CONFIG_PATH) as f:
@@ -823,6 +835,7 @@ def test_save_response_skips_scan_for_admin_tools():
 # =============================================================================
 
 
+@pytest.mark.skipif(not _HAS_JQ, reason="jq is not installed; required for query command")
 def test_query_cmd_wraps_output():
     """Test that CLI query command wraps jq output with security markers."""
     from zendesk_skill.storage import save_response
@@ -869,6 +882,7 @@ def test_query_cmd_no_wrap_on_error():
     assert "not found" in result.output.lower() or result.exit_code != 0
 
 
+@pytest.mark.skipif(not _HAS_JQ, reason="jq is not installed; required for query command")
 def test_query_cmd_surfaces_detections():
     """Test that query command surfaces security_detections from metadata."""
     from zendesk_skill.storage import save_response

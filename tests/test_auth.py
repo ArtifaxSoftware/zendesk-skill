@@ -1,9 +1,14 @@
 """Tests for the auth package."""
 
 import json
+import sys
 import tempfile
 from pathlib import Path
 from unittest.mock import patch
+
+# POSIX mode bits (0o600) are not enforced on Windows; secret-file isolation
+# there comes from NTFS ACLs inherited from %USERPROFILE%.
+_POSIX_MODES_ENFORCED = sys.platform != "win32"
 
 
 def test_scopes_default():
@@ -105,9 +110,10 @@ def test_oauth_token_save_and_load(tmp_path, monkeypatch):
     with patch("zendesk_skill.auth.oauth.OAUTH_TOKEN_PATH", token_path):
         _save_oauth_token(token_data)
 
-        # Check file permissions
-        mode = token_path.stat().st_mode & 0o777
-        assert mode == 0o600
+        # Check file permissions — POSIX only.
+        if _POSIX_MODES_ENFORCED:
+            mode = token_path.stat().st_mode & 0o777
+            assert mode == 0o600
 
         loaded = _load_oauth_token()
         assert loaded["access_token"] == "test_access"
