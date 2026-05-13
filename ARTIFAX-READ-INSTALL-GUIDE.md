@@ -173,9 +173,11 @@ jq --version
 
 ## 6. Register the skill with Claude Code
 
-Claude Code looks for skills under `%USERPROFILE%\.claude\skills\<name>\`.
-We recommend a **directory junction** rather than a copy so `git pull`
-updates flow through automatically.
+Claude Code looks for personal skills under
+`%USERPROFILE%\.claude\skills\<name>\`. **The skill files must live in a
+real directory** — Claude Code's skill scanner does not traverse Windows
+directory junctions, so `mklink /J` will not work even though the files
+appear visible. Use a copy.
 
 ### 6a. Clone the fork (if you haven't already)
 
@@ -183,35 +185,47 @@ updates flow through automatically.
 git clone https://github.com/ArtifaxSoftware/zendesk-skill C:\GitHub\zendesk-skill
 ```
 
-### 6b. Create the junction
+### 6b. Copy SKILL.md and supporting files into the skills directory
 
 ```powershell
-New-Item -ItemType Directory -Path "$env:USERPROFILE\.claude\skills" -Force | Out-Null
-cmd /c mklink /J "$env:USERPROFILE\.claude\skills\zendesk" "C:\GitHub\zendesk-skill"
+$dst = "$env:USERPROFILE\.claude\skills\zendesk"
+New-Item -ItemType Directory -Path $dst -Force | Out-Null
+Copy-Item C:\GitHub\zendesk-skill\SKILL.md      $dst
+Copy-Item C:\GitHub\zendesk-skill\reference -Destination $dst -Recurse
 ```
 
-Junctions (unlike symbolic links) don't require admin or developer mode.
-After this, `%USERPROFILE%\.claude\skills\zendesk\SKILL.md` resolves to
-the file in your clone.
+Only `SKILL.md` and `reference/` need to be present — Claude Code does
+not require `src/`, `tests/`, or the rest of the repo, and including
+them only clutters the directory.
 
 ### 6c. Restart Claude Code
 
 Claude Code loads its skill list at session start. **Exit your current
-Claude Code session and start a new one** for `/zendesk` to appear in the
-skill list.
+Claude Code session and start a new one** for `/zendesk` to appear in
+the skill list. If `~/.claude/skills/` didn't exist before this step,
+you may need a full Claude Code restart (not just a new session) for
+the scanner to pick up the new top-level directory.
 
 ---
 
 ## 7. Updating later
 
-Updates to the fork need to be pulled to the clone and reinstalled to the
-`uv` tool environment. The junction picks up SKILL.md changes
-automatically; the CLI tool does not.
+Updates to the fork need to be pulled to the clone, then both the
+installed CLI and the copied skill files need refreshing:
 
 ```powershell
 cd C:\GitHub\zendesk-skill
 git pull
+
+# Refresh the installed CLI binary
 uv tool install --force "git+https://github.com/ArtifaxSoftware/zendesk-skill"
+
+# Refresh the skill files Claude Code sees
+$dst = "$env:USERPROFILE\.claude\skills\zendesk"
+Copy-Item C:\GitHub\zendesk-skill\SKILL.md      $dst -Force
+Copy-Item C:\GitHub\zendesk-skill\reference -Destination $dst -Recurse -Force
+
+# Restart Claude Code so the new SKILL.md is reloaded
 ```
 
 To check what version is currently installed:
@@ -262,14 +276,42 @@ uv tool install --force "git+https://github.com/ArtifaxSoftware/zendesk-skill"
 
 ### `/zendesk` doesn't appear in Claude Code's skill list
 
-Skills load at session start. Exit and relaunch Claude Code. If still
-missing, confirm the junction:
+First, confirm the file is reachable:
 
 ```powershell
 Test-Path "$env:USERPROFILE\.claude\skills\zendesk\SKILL.md"
 ```
 
-Should return `True`.
+Should return `True`. If yes but the skill still isn't discovered:
+
+1. **Is the skill directory a junction?** Claude Code's skill scanner
+   does **not** traverse Windows junctions, even though they appear
+   transparent to most other tools. Check with:
+
+   ```powershell
+   (Get-Item "$env:USERPROFILE\.claude\skills\zendesk").LinkType
+   ```
+
+   If this returns `Junction`, that's the problem. Replace it with a
+   real directory + file copies (see [Step 6b](#6b-copy-skillmd-and-supporting-files-into-the-skills-directory)):
+
+   ```powershell
+   $dst = "$env:USERPROFILE\.claude\skills\zendesk"
+   Remove-Item $dst -Force
+   New-Item -ItemType Directory -Path $dst -Force | Out-Null
+   Copy-Item C:\GitHub\zendesk-skill\SKILL.md      $dst
+   Copy-Item C:\GitHub\zendesk-skill\reference -Destination $dst -Recurse
+   ```
+
+2. **Did `~/.claude/skills/` exist when Claude Code started?** If the
+   top-level skills directory was created mid-session, the scanner
+   may not pick it up until the next *full* Claude Code restart (not
+   just `/exit` and re-run). Try fully closing your terminal and
+   reopening.
+
+3. **Is the SKILL.md frontmatter valid YAML?** It must be a fenced
+   block at the very top of the file, opening and closing with `---`,
+   with at least `name:` and `description:` keys.
 
 ### Tests fail with file-permission assertions
 
