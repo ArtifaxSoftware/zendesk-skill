@@ -208,16 +208,131 @@ the scanner to pick up the new top-level directory.
 
 ---
 
-## 7. Updating later
+## 7. Use as an MCP server via Docker (Claude Desktop / Claude Code)
 
-Updates to the fork need to be pulled to the clone, then both the
-installed CLI and the copied skill files need refreshing:
+The Artifax fork ships a `Dockerfile` that packages `zendesk-mcp` as a
+self-contained container. This lets you add the Zendesk skill as an MCP
+server in **Claude Desktop** or **Claude Code** without installing Python
+on the host at all — Docker handles the runtime.
+
+### 7a. Prerequisites
+
+- **Docker Desktop** installed and running.
+- The image built from this repo (see below), or pulled from a shared
+  registry if Artifax publishes one.
+
+### 7b. Build the image locally
+
+```powershell
+cd C:\GitHub\zendesk-skill
+docker build -t artifax/zendesk-mcp:dev .
+```
+
+The build takes 30–60 s on first run (downloading base images and deps);
+subsequent builds are cached and take a few seconds.
+
+Verify the image exists:
+
+```powershell
+docker images artifax/zendesk-mcp
+```
+
+### 7c. Wire it into Claude Desktop
+
+Claude Desktop's MCP config lives at:
+
+```
+%APPDATA%\Claude\claude_desktop_config.json
+```
+
+Open or create that file and add the `zendesk` server under `mcpServers`:
+
+```json
+{
+  "mcpServers": {
+    "zendesk": {
+      "command": "docker",
+      "args": [
+        "run", "--rm", "-i",
+        "-e", "ZENDESK_EMAIL",
+        "-e", "ZENDESK_TOKEN",
+        "-e", "ZENDESK_SUBDOMAIN",
+        "artifax/zendesk-mcp:dev"
+      ],
+      "env": {
+        "ZENDESK_EMAIL": "you@artifax.com",
+        "ZENDESK_TOKEN": "your-api-token-here",
+        "ZENDESK_SUBDOMAIN": "artifax"
+      }
+    }
+  }
+}
+```
+
+> **Security note:** The `env` block passes credentials to Docker's
+> process environment (not visible in `docker ps` or process listings).
+> The `claude_desktop_config.json` file itself should be kept private;
+> do not commit it to source control or share it.
+
+**Restart Claude Desktop** after editing the config. The Zendesk tools
+(`zendesk_search`, `zendesk_get_ticket`, etc.) will then be available in
+every chat session.
+
+### 7d. Wire it into Claude Code
+
+Claude Code MCP servers are configured in
+`%USERPROFILE%\.claude\settings.json` (global) or `.claude/settings.json`
+in a project root (project-scoped). Add the same block:
+
+```json
+{
+  "mcpServers": {
+    "zendesk": {
+      "command": "docker",
+      "args": [
+        "run", "--rm", "-i",
+        "-e", "ZENDESK_EMAIL",
+        "-e", "ZENDESK_TOKEN",
+        "-e", "ZENDESK_SUBDOMAIN",
+        "artifax/zendesk-mcp:dev"
+      ],
+      "env": {
+        "ZENDESK_EMAIL": "you@artifax.com",
+        "ZENDESK_TOKEN": "your-api-token-here",
+        "ZENDESK_SUBDOMAIN": "artifax"
+      }
+    }
+  }
+}
+```
+
+Start a new Claude Code session after saving. You can verify the server
+is connected with:
+
+```
+/mcp
+```
+
+Which should list `zendesk` as a connected server with 26 tools.
+
+### 7e. How it works
+
+When Claude needs a Zendesk tool, it spawns the `docker run` command,
+communicates with the container over **stdio** (the `-i` flag), and the
+container exits cleanly when the session ends (`--rm`). No ports are
+opened; no persistent container is left running.
+
+---
+
+## 8. Updating later
+
+Pull the latest from the fork, then refresh whichever components you use:
 
 ```powershell
 cd C:\GitHub\zendesk-skill
 git pull
 
-# Refresh the installed CLI binary
+# Refresh the installed CLI binary (if using zd-cli / Claude Code skill)
 uv tool install --force "git+https://github.com/ArtifaxSoftware/zendesk-skill"
 
 # Refresh the skill files Claude Code sees
@@ -225,10 +340,13 @@ $dst = "$env:USERPROFILE\.claude\skills\zendesk"
 Copy-Item C:\GitHub\zendesk-skill\SKILL.md      $dst -Force
 Copy-Item C:\GitHub\zendesk-skill\reference -Destination $dst -Recurse -Force
 
-# Restart Claude Code so the new SKILL.md is reloaded
+# Rebuild the Docker image (if using the MCP server via Docker)
+docker build -t artifax/zendesk-mcp:dev .
+
+# Restart Claude Code / Claude Desktop so new versions are picked up
 ```
 
-To check what version is currently installed:
+To check what CLI version is currently installed:
 
 ```powershell
 uv tool list
@@ -312,6 +430,27 @@ Should return `True`. If yes but the skill still isn't discovered:
 3. **Is the SKILL.md frontmatter valid YAML?** It must be a fenced
    block at the very top of the file, opening and closing with `---`,
    with at least `name:` and `description:` keys.
+
+### Claude Desktop/Code shows "zendesk MCP server failed to start"
+
+1. **Is Docker Desktop running?** The MCP client spawns `docker run`
+   lazily — if Docker isn't running, the spawn fails silently. Start
+   Docker Desktop and restart Claude.
+
+2. **Does the image exist?** Run `docker images artifax/zendesk-mcp` — if
+   the list is empty, build it (see [Step 7b](#7b-build-the-image-locally)).
+
+3. **Are the env vars set in the config?** Open `claude_desktop_config.json`
+   and check the `"env"` block has non-empty values for all three vars.
+
+4. **Check Docker logs**: test the container manually:
+
+   ```powershell
+   echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"0.0.1"}}}' | docker run --rm -i -e ZENDESK_EMAIL="you@artifax.com" -e ZENDESK_TOKEN="your-token" -e ZENDESK_SUBDOMAIN="artifax" artifax/zendesk-mcp:dev
+   ```
+
+   A valid JSON-RPC response with `"serverInfo"` means the server works —
+   the issue is with the client config, not the image.
 
 ### Tests fail with file-permission assertions
 

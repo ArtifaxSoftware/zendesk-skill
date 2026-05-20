@@ -1,0 +1,42 @@
+# VCS
+.git/
+.gitignore
+.gitattributes
+
+# Python build / cache / venv
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.venv/
+venv/
+*.egg-info/
+build/
+dist/
+
+# Editor / OS detritus
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Test artefacts
+.coverage
+htmlcov/
+
+# Local Claude Code / agent artefacts
+.claude/
+
+# Docs and packaging (not needed inside the image)
+docs/
+tests/
+ARTIFAX-READ-INSTALL-GUIDE.md
+CLAUDE.md
+
+# Docker self
+Dockerfile
+.dockerignore
